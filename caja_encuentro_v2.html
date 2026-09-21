@@ -135,7 +135,7 @@ label{display:block;font-size:12px;color:var(--mut);margin:0 2px 5px}
     <h1>XXI Encuentro Nacional de Mini Básquet</h1>
     <p>Club Independiente de Tandil · Caja del fin de semana</p>
   </div>
-  <div class="hr"><span class="ver">v2</span><button class="st off" id="st" onclick="syncNow()">…</button></div>
+  <div class="hr"><span class="ver">v2.1</span><button class="st off" id="st" onclick="syncNow()">…</button></div>
 </header>
 <iframe name="upif" id="upif" style="display:none" title="subida"></iframe>
 
@@ -176,7 +176,7 @@ function icon(name,size){
 
 /* ============ CONFIGURACIÓN ============ */
 // ⚠️ Pegá acá la URL de la aplicación web (termina en /exec) y la misma clave del Code.gs
-const DEFAULT_CFG = { url:'', key:'mini21', dev:'', asked:false };
+const DEFAULT_CFG = { url:'https://script.google.com/macros/s/AKfycbz-XFGMiGMm7oBUCpjj8u5zvEqXaTeJGOLN8gsPu8ta2Ki39VLrobHjrb_V6g6JjeL4/exec', key:'mini21', dev:'', asked:false };
 const RO = /[?&#]ver=1/.test(location.search+location.hash);   // link "solo ver"
 function loadCfg(){
   let c={}; try{ c=JSON.parse(localStorage.getItem('emb21_cfg'))||{}; }catch(e){}
@@ -282,18 +282,23 @@ function iconOf(m){const a=(S.areas[m.tipo]||[]).find(x=>x.id===m.areaId); retur
 
 /* ============ SINCRONIZACIÓN CON EL SHEET ============ */
 let online=false;
+let LAST=null;   // diagnóstico del último intento de conexión
 function call(action,params,timeout){
   return new Promise(res=>{
     if(!CFG.url) return res(null);
     const cb='cb'+Math.random().toString(36).slice(2);
     const s=document.createElement('script');
-    let done=false, t;
-    const fin=v=>{ if(done) return; done=true; clearTimeout(t); window[cb]=function(){}; s.remove(); res(v); };
+    let done=false, t, len=0;
+    const fin=(v,why)=>{
+      if(done) return; done=true; clearTimeout(t); window[cb]=function(){}; s.remove();
+      LAST={a:action,len:len,t:Date.now(),r: v===null?(why||'sin respuesta'):(v&&v.ok?'ok':'error: '+(v&&v.err))};
+      res(v);
+    };
     window[cb]=d=>fin(d);
-    s.onerror=()=>fin(null);
-    t=setTimeout(()=>fin(null),timeout||15000);
+    s.onerror=()=>fin(null,'error de carga');
+    t=setTimeout(()=>fin(null,'sin respuesta (15 s)'),timeout||15000);
     const q=new URLSearchParams(Object.assign({action:action,k:CFG.key,callback:cb,_:Date.now()},params||{}));
-    s.src=CFG.url+'?'+q.toString();
+    s.src=CFG.url+'?'+q.toString(); len=s.src.length;
     document.head.appendChild(s);
   });
 }
@@ -301,20 +306,22 @@ function wire(m){
   return {id:m.id,f:m.fecha,t:m.tipo,a:m.areaNombre,ai:m.areaId,m:m.monto,r:m.rinde,
           d:(m.detalle||'').slice(0,120),c:m.cargo||'',x:m.del?1:0,u:m.upd,fx:m.fclear?1:0};
 }
-const areasArr=()=>[].concat(
-  S.areas.ingreso.map(a=>['ingreso',a.id,a.nombre,a.icono]),
-  S.areas.egreso.map(a=>['egreso',a.id,a.nombre,a.icono]));
+const limpio=x=>String(x==null?'':x).replace(/[|~]/g,' ');
+const areasCompact=()=>[].concat(
+  S.areas.ingreso.map(a=>['i',a.id,limpio(a.nombre),a.icono].join('~')),
+  S.areas.egreso.map(a=>['e',a.id,limpio(a.nombre),a.icono].join('~'))).join('|');
 function marcar(m){ m.upd=Date.now(); S.pend[m.id]=1; }
 function pendientes(){ return Object.keys(S.pend).length + (S.areasDirty?1:0) + vivos().filter(m=>m.foto&&!m.fotoId).length; }
 
-let flushing=false;
+let flushing=false, areasNext=0;
 async function flush(){
   if(flushing||!CFG.url||RO) return;
   flushing=true;
   try{
-    if(S.areasDirty){
-      const r=await call('areas',{d:JSON.stringify(areasArr())});
-      if(r&&r.ok){ S.areasDirty=false; S.asrv=r.asrv; save(); online=true; } else { online=false; return; }
+    if(S.areasDirty && Date.now()>=areasNext){
+      const r=await call('areas',{d:areasCompact()});
+      if(r&&r.ok){ S.areasDirty=false; S.asrv=r.asrv; save(); online=true; }
+      else areasNext=Date.now()+20000;      // reintenta en 20 s, sin frenar los movimientos
     }
     for(const id of Object.keys(S.pend)){
       const m=S.movs.find(x=>x.id===id);
@@ -544,6 +551,7 @@ function ajustes(){
     <label>Clave</label>
     <input id="s_key" class="inp" value="${esc(CFG.key)}" autocapitalize="off" autocorrect="off" spellcheck="false">
     <button class="btn" onclick="guardarCfg()">Guardar y probar</button>
+    <div class="tb" style="margin-top:12px"><div class="r"><span>Último intento<small>${LAST?esc(LAST.a)+' · URL de '+LAST.len+' caracteres':''}</small></span><b>${LAST?esc(LAST.r):'—'}</b></div><div class="r"><span>Pendientes de subir</span><b>${pendientes()}</b></div></div>
     <div class="acts">
       ${S.sheetUrl?`<a class="btn ghost" href="${esc(S.sheetUrl)}" target="_blank" rel="noopener">Abrir el Sheet</a>`:''}
       <button class="btn ghost" onclick="copiarLinkVer()">Copiar link “solo ver”</button>
@@ -557,7 +565,7 @@ async function guardarCfg(){
   toast('Probando…');
   const r=await call('ping');
   if(r&&r.ok){ S.sheetUrl=r.sheet; save(); online=true; toast('✓ Conectado al Sheet'); closeModal(); startSync(); }
-  else toast(r&&r.err==='clave'?'La clave no coincide':'No se pudo conectar. Revisá la URL y la implementación');
+  else toast(r&&r.err==='clave'?'La clave no coincide':'No se pudo conectar: '+(LAST?LAST.r:''));
 }
 function copiarLinkVer(){
   const u=location.href.split('#')[0].split('?')[0]+'?ver=1';
