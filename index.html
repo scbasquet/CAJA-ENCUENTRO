@@ -161,7 +161,7 @@ details summary{cursor:pointer;color:var(--gold);font-weight:700;font-size:14px;
     <h1><span>XXI Encuentro Nacional</span>Mini Básquet</h1>
     <p>Club Independiente de Tandil<br>Caja del fin de semana</p>
   </div>
-  <div class="hr"><span class="ver">v9</span><button class="st off" id="st" onclick="syncNow()">…</button></div>
+  <div class="hr"><span class="ver">v10</span><button class="st off" id="st" onclick="syncNow()">…</button></div>
 </header>
 <iframe name="upif" id="upif" style="display:none" title="subida"></iframe>
 
@@ -170,6 +170,7 @@ details summary{cursor:pointer;color:var(--gold);font-weight:700;font-size:14px;
 <nav class="nav">
   <button data-v="home" onclick="go('home')"><span>🏀</span>Caja</button>
   <button data-v="saldos" onclick="go('saldos')"><span>💰</span>Saldos</button>
+  <button data-v="cuentas" onclick="go('cuentas')"><span>🏦</span>Cuentas</button>
   <button data-v="movs" onclick="go('movs')"><span>📋</span>Movs.</button>
   <button data-v="resumen" onclick="go('resumen')"><span>📊</span>Resumen</button>
   <button data-v="perfil" onclick="go('perfil')"><span>👤</span>Perfil</button>
@@ -461,7 +462,7 @@ function go(v){view=v; editAreas=false; if(v==='movs'){filtroArea='';} render();
 function openTipo(t){ if(RO) return; tipo=t; view='tipo'; editAreas=false; render(); window.scrollTo(0,0);}
 function render(){
   const a=$('app');
-  a.innerHTML = view==='home'?vHome(): view==='tipo'?vTipo(): view==='saldos'?vSaldos(): view==='movs'?vMovs(): view==='perfil'?vPerfil(): vResumen();
+  a.innerHTML = view==='home'?vHome(): view==='tipo'?vTipo(): view==='saldos'?vSaldos(): view==='cuentas'?vCuentas(): view==='movs'?vMovs(): view==='perfil'?vPerfil(): vResumen();
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===(view==='tipo'?'home':view)));
   updateStatus();
 }
@@ -541,6 +542,24 @@ function filaRubro(t,r,tot){
     <small>${r.n} mov. · ${pct}% de los ${ing?'ingresos':'egresos'}</small></div></div>`;
 }
 function verRubro(t,id){ filtro=t; filtroArea=id; view='movs'; editAreas=false; render(); window.scrollTo(0,0); }
+function vCuentas(){
+  const t=totales(), g={};
+  const key=c=>{const l=listaCuentas().find(x=>x.toLowerCase()===String(c).toLowerCase()); return l||c;};
+  listaCuentas().forEach(c=>g[c]={i:0,e:0,n:0});
+  g['Sin cuenta asignada']={i:0,e:0,n:0};
+  vivos().forEach(m=>{
+    const k=m.cuenta?key(m.cuenta):'Sin cuenta asignada';
+    g[k]=g[k]||{i:0,e:0,n:0}; g[k].n++;
+    if(m.tipo==='ingreso') g[k].i+=m.monto; else g[k].e+=m.monto;
+  });
+  const rows=Object.entries(g).filter(([k,v])=>v.n||k!=='Sin cuenta asignada');
+  return `<div class="bal"><div class="sal"><small>Saldo total (todas las cuentas)</small><b>${fmt(t.s)}</b></div></div>
+    <h3 class="sec">Saldo por cuenta</h3>
+    ${rows.map(([k,v])=>{const s=v.i-v.e; return `<div class="tb" style="margin-bottom:10px"><div class="r"><span><b>${esc(k)}</b><small>${v.n} mov.</small></span><b class="${s>=0?'pos':'neg'}" style="font-size:20px">${s<0?'−':''}${fmt(Math.abs(s))}</b></div>
+      <div class="r"><span>Ingresado a cuenta</span><span class="pos">+${fmt(v.i)}</span></div>
+      <div class="r"><span>Pagado por la cuenta</span><span class="neg">−${fmt(v.e)}</span></div></div>`;}).join('')}
+    <div class="empty" style="padding:6px">Suma los ingresos "ingresado a cuenta de" y resta los egresos "pagado por" de cada cuenta.</div>`;
+}
 function vSaldos(){
   const t=totales(), ri=porRubro('ingreso'), re=porRubro('egreso');
   const vacio='<div class="empty">Todavía no hay rubros.</div>';
